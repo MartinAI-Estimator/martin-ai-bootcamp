@@ -1,4 +1,4 @@
-# DAY 5: GlazingGPT v0.3 — OCR + Excel Export
+# DAY 6: GlazingGPT v0.4 — Full Bid with Cost & Profit
 import PyPDF2
 import pytesseract
 from PIL import Image
@@ -8,14 +8,13 @@ import pandas as pd
 pdf_path = "glazing_drawing.pdf"
 
 try:
+    # === OCR EXTRACT TEXT ===
     with open(pdf_path, 'rb') as file:
         reader = PyPDF2.PdfReader(file)
         text = ""
-        
         for page_num in range(len(reader.pages)):
             page = reader.pages[page_num]
             page_text = page.extract_text()
-            
             if page_text and page_text.strip():
                 text += page_text + "\n"
             else:
@@ -28,25 +27,49 @@ try:
                             ocr_text = pytesseract.image_to_string(img)
                             text += ocr_text + "\n"
 
+    # === COUNT ITEMS ===
     windows = text.lower().count("window")
     glass = text.lower().count("glass")
     sqft = text.lower().count("sq ft") + text.lower().count("sqft") + text.lower().count("s.f.")
-    linear = text.lower().count("linear") + text.lower().count("l.f.")
+    linear = text.lower().count("linear") + text.lower().count("l.f.") + text.lower().count("lin.")
 
-    # Export to Excel
-    df = pd.DataFrame({
-        "Item": ["Windows", "Glass References", "Sq Ft", "Linear Ft"],
-        "Quantity": [windows, glass, sqft, linear]
-    })
-    df.to_excel("GlazingGPT_Takeoff.xlsx", index=False)
+    # === COST DATABASE (your real rates) ===
+    costs = {
+        "Windows": 475,
+        "Glass": 92,
+        "Sq Ft": 1.35,
+        "Linear Ft": 138
+    }
 
-    print("GLAZINGGPT v0.3 — OCR + EXCEL EXPORT")
-    print("=" * 55)
-    print(f"PDF: {pdf_path}")
-    print(f"Windows: {windows} | Glass: {glass} | Sq ft: {sqft} | Linear ft: {linear}")
-    print("Exported to: GlazingGPT_Takeoff.xlsx")
-    print("=" * 55)
-    print("Day 6 → Cost estimation coming!")
+    # === BUILD BID ===
+    df = pd.DataFrame([
+        {"Item": "Windows", "Qty": windows, "Unit": "$/ea", "Cost": costs["Windows"]},
+        {"Item": "Glass", "Qty": glass, "Unit": "$/ref", "Cost": costs["Glass"]},
+        {"Item": "Sq Ft", "Qty": sqft, "Unit": "$/sqft", "Cost": costs["Sq Ft"]},
+        {"Item": "Linear Ft", "Qty": linear, "Unit": "$/ft", "Cost": costs["Linear Ft"]}
+    ])
+
+    df["Total"] = df["Qty"] * df["Cost"]
+    df["Markup (30%)"] = df["Total"] * 0.30
+    df["Bid Price"] = df["Total"] + df["Markup (30%)"]
+
+    subtotal = df["Total"].sum()
+    profit = df["Markup (30%)"].sum()
+    total_bid = df["Bid Price"].sum()
+
+    # === EXPORT TO EXCEL ===
+    with pd.ExcelWriter("GlazingGPT_FULL_BID.xlsx", engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Takeoff", index=False)
+        pd.DataFrame([{"SUBTOTAL": subtotal, "PROFIT": profit, "TOTAL BID": total_bid}]).to_excel(writer, sheet_name="Summary", index=False)
+
+    print("GLAZINGGPT v0.4 — FULL BID READY")
+    print("=" * 60)
+    print(df[["Item", "Qty", "Bid Price"]])
+    print(f"\nSUBTOTAL: ${subtotal:,.2f}")
+    print(f"PROFIT (30%): ${profit:,.2f}")
+    print(f"TOTAL BID: ${total_bid:,.2f}")
+    print("Exported to: GlazingGPT_FULL_BID.xlsx")
+    print("=" * 60)
 
 except FileNotFoundError:
     print(f"ERROR: '{pdf_path}' not found!")
